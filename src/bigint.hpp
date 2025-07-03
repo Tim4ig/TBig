@@ -6,6 +6,8 @@
 
 namespace t::big
 {
+    enum class BigIntBase { Dec = 10, Hex = 16, Bin = 2 };
+
     template<std::size_t N>
     class BigInt
     {
@@ -15,7 +17,7 @@ namespace t::big
         static constexpr std::size_t limb_count = (N + word_bits - 1) / word_bits;
         static constexpr std::size_t size = limb_count * sizeof(word_t);
 
-        enum class Base { Dec = 10, Hex = 16, Bin = 2 };
+
 
         static_assert(limb_count % 4 == 0,
                       "BigInt<N>: number of 64-bit limbs must be divisible by 4 for AVX2 compatibility");
@@ -58,7 +60,7 @@ namespace t::big
         BigInt operator--(int); // postfix
 
         // Serialization
-        [[nodiscard]] std::string to_string(Base base = Base::Dec) const;
+        [[nodiscard]] std::string to_string(BigIntBase base = BigIntBase::Dec) const;
         [[nodiscard]] explicit operator std::string() const;
 
     private:

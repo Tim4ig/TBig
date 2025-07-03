@@ -5,15 +5,16 @@
 
 int main()
 {
-    const auto a = t::big::BigInt<4096>(4);
-    const auto b = t::big::BigInt<4096>(3);
+    auto a = t::big::BigInt<8192>(16);
+    const auto b = t::big::BigInt<8192>(16);
+
+    for (int i = 0; i < 350; ++i)
+    {
+        std::cout << "i=" << i << ",val=" << a.to_string(t::big::BigIntBase::Hex) << '\n';
+        a *= b;
+    }
 
     std::cout << a.to_string() << '\n';
-    std::cout << b.to_string() << '\n';
-
-    std::cout << (a + b).to_string() << '\n';
-    std::cout << (a - b).to_string() << '\n';
-    std::cout << (a * b).to_string() << '\n';
 
     return 0;
 }

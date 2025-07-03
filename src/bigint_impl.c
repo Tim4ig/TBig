@@ -101,7 +101,13 @@ void bigint_mul_school(uint64_t *dst, const uint64_t *a, const uint64_t *b, cons
     }
 }
 
-void bigint_mul_karatsuba(uint64_t *dst, const uint64_t *a, const uint64_t *b, const size_t n, uint64_t *temp)
+void bigint_mul_karatsuba(
+    uint64_t *dst,
+    const uint64_t *a,
+    const uint64_t *b,
+    const size_t n,
+    uint64_t *temp
+)
 {
     if (n <= 8)
     {
@@ -110,6 +116,7 @@ void bigint_mul_karatsuba(uint64_t *dst, const uint64_t *a, const uint64_t *b, c
     }
 
     const size_t h = n / 2;
+
     const uint64_t *a0 = a;
     const uint64_t *a1 = a + h;
     const uint64_t *b0 = b;
@@ -118,66 +125,43 @@ void bigint_mul_karatsuba(uint64_t *dst, const uint64_t *a, const uint64_t *b, c
     uint64_t *z0 = temp;
     uint64_t *z1 = temp + 2 * h;
     uint64_t *z2 = temp + 4 * h;
-
     uint64_t *a_sum = temp + 6 * h;
     uint64_t *b_sum = temp + 7 * h;
 
     uint64_t carry = 0;
     for (size_t i = 0; i < h; ++i)
     {
-        if (i + 4 < h)
-        {
-            __builtin_prefetch(&a0[i + 4], 0, 3);
-            __builtin_prefetch(&a1[i + 4], 0, 3);
-        }
         a_sum[i] = adcx_u64(a0[i], a1[i], &carry);
     }
 
     carry = 0;
     for (size_t i = 0; i < h; ++i)
     {
-        if (i + 4 < h)
-        {
-            __builtin_prefetch(&b0[i + 4], 0, 3);
-            __builtin_prefetch(&b1[i + 4], 0, 3);
-        }
         b_sum[i] = adcx_u64(b0[i], b1[i], &carry);
     }
 
-    __builtin_prefetch(a0, 0, 3);
-    __builtin_prefetch(b0, 0, 3);
     bigint_mul_karatsuba(z0, a0, b0, h, temp + 8 * h);
-
-    __builtin_prefetch(a1, 0, 3);
-    __builtin_prefetch(b1, 0, 3);
     bigint_mul_karatsuba(z2, a1, b1, h, temp + 8 * h);
-
-    __builtin_prefetch(a_sum, 0, 3);
-    __builtin_prefetch(b_sum, 0, 3);
     bigint_mul_karatsuba(z1, a_sum, b_sum, h, temp + 8 * h);
-
-    carry = 0;
-    for (size_t i = 0; i < n; ++i)
-    {
-        z1[i] = adcx_u64(z1[i], ~z0[i], &carry);
-    }
-
-    carry = 0;
-    for (size_t i = 0; i < n; ++i)
-    {
-        z1[i] = adcx_u64(z1[i], ~z2[i], &carry);
-    }
-
-    memset(dst, 0, 2 * n * sizeof(uint64_t));
-
-    for (size_t i = 0; i < n; ++i)
-    {
-        dst[i] = z0[i];
-    }
 
     uint64_t tmp[2 * h];
     bigint_sub_avx2(z1, z0, tmp, n);
     bigint_sub_avx2(tmp, z2, z1, n);
+
+    memset(dst, 0, 2 * n * sizeof(uint64_t));
+    memcpy(dst, z0, n * sizeof(uint64_t));
+
+    carry = 0;
+    for (size_t i = 0; i < n; ++i)
+    {
+        dst[i + h] = adcx_u64(dst[i + h], z1[i], &carry);
+    }
+
+    carry = 0;
+    for (size_t i = 0; i < n; ++i)
+    {
+        dst[i + 2 * h] = adcx_u64(dst[i + 2 * h], z2[i], &carry);
+    }
 }
 
 // slow but it's only used for to_string()

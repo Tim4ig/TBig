@@ -85,7 +85,7 @@ namespace t::big
         alignas(32) uint64_t result[R];
         alignas(32) uint64_t temp[4 * R];
 
-        if (N > 512)
+        if (true)
         {
             bigint_mul_karatsuba(result, raw_.data(), other.raw_.data(), limb_count, temp);
         } else
@@ -151,14 +151,14 @@ namespace t::big
     }
 
     template<std::size_t N>
-    std::string BigInt<N>::to_string(Base base) const
+    std::string BigInt<N>::to_string(const BigIntBase base) const
     {
         if (*this == BigInt{})
         {
             return "0";
         }
 
-        if (base == Base::Hex)
+        if (base == BigIntBase::Hex)
         {
             std::string result;
             result.reserve(limb_count * 16 + 2);
@@ -185,7 +185,7 @@ namespace t::big
             return result;
         }
 
-        if (base == Base::Bin)
+        if (base == BigIntBase::Bin)
         {
             std::string result;
             result.reserve(limb_count * 64 + 2);
@@ -243,3 +243,4 @@ template class t::big::BigInt<512>;
 template class t::big::BigInt<1024>;
 template class t::big::BigInt<2048>;
 template class t::big::BigInt<4096>;
+template class t::big::BigInt<8192>;
