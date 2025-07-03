@@ -1,12 +1,23 @@
 #include "bigint.hpp"
 
+extern "C"
+{
+#include "bigint_impl.h"
+}
+
 #include <string>
 #include <cstring>
 #include <algorithm>
-#include <immintrin.h>
+#include <iostream>
 
 namespace t::big
 {
+    template<std::size_t N>
+    BigInt<N>::BigInt(word_t value)
+    {
+        *this = value;
+    }
+
     template<std::size_t N>
     BigInt<N> &BigInt<N>::operator=(const word_t value)
     {
@@ -18,28 +29,7 @@ namespace t::big
     template<std::size_t N>
     bool BigInt<N>::operator<(const BigInt &other) const
     {
-        const auto *lhs = raw_.data();
-        const auto *rhs = other.raw_.data();
-
-        auto i = limb_count;
-        while (i >= 4)
-        {
-            i -= 4;
-            const auto va = _mm256_load_si256(reinterpret_cast<const __m256i *>(lhs + i));
-            const auto vb = _mm256_load_si256(reinterpret_cast<const __m256i *>(rhs + i));
-            const auto cmp_eq = _mm256_cmpeq_epi64(va, vb);
-
-            if (const auto eq_mask = _mm256_movemask_epi8(cmp_eq); eq_mask != 0xFFFFFFFFu)
-            {
-                const auto diff_mask = ~eq_mask;
-                const auto bit_pos = _tzcnt_u32(diff_mask);
-                const auto lane = bit_pos >> 3;
-                const auto idx = i + lane;
-                return lhs[idx] < rhs[idx];
-            }
-        }
-
-        return false;
+        return bigint_lt_avx2(raw_.data(), other.raw_.data(), limb_count);
     }
 
     template<std::size_t N>
@@ -76,27 +66,175 @@ namespace t::big
     BigInt<N> BigInt<N>::operator+(const BigInt &other) const
     {
         BigInt res{};
-        unsigned char carry = 0;
+        bigint_add_avx2(raw_.data(), other.raw_.data(), res.raw_.data(), limb_count);
+        return res;
+    }
 
-        for (std::size_t i = 0; i < limb_count; i += 4)
+    template<std::size_t N>
+    BigInt<N> BigInt<N>::operator-(const BigInt &other) const
+    {
+        BigInt res{};
+        bigint_sub_avx2(raw_.data(), other.raw_.data(), res.raw_.data(), limb_count);
+        return res;
+    }
+
+    template<std::size_t N>
+    BigInt<N> BigInt<N>::operator*(const BigInt &other) const
+    {
+        constexpr std::size_t R = 2 * limb_count;
+        alignas(32) uint64_t result[R];
+        alignas(32) uint64_t temp[4 * R];
+
+        if (N > 512)
         {
-            carry = _addcarryx_u64(carry, raw_[i + 0], other.raw_[i + 0],
-                                   reinterpret_cast<unsigned long long *>(&res.raw_[i + 0]));
-            carry = _addcarryx_u64(carry, raw_[i + 1], other.raw_[i + 1],
-                                   reinterpret_cast<unsigned long long *>(&res.raw_[i + 1]));
-            carry = _addcarryx_u64(carry, raw_[i + 2], other.raw_[i + 2],
-                                   reinterpret_cast<unsigned long long *>(&res.raw_[i + 2]));
-            carry = _addcarryx_u64(carry, raw_[i + 3], other.raw_[i + 3],
-                                   reinterpret_cast<unsigned long long *>(&res.raw_[i + 3]));
+            bigint_mul_karatsuba(result, raw_.data(), other.raw_.data(), limb_count, temp);
+        } else
+        {
+            bigint_mul_school(result, raw_.data(), other.raw_.data(), limb_count);
         }
 
-        return res;
+        BigInt trimmed{};
+        std::copy_n(result, limb_count, trimmed.raw_.begin());
+        return trimmed;
+    }
+
+    template<std::size_t N>
+    BigInt<N> &BigInt<N>::operator+=(const BigInt &other)
+    {
+        *this = *this + other;
+        return *this;
+    }
+
+    template<std::size_t N>
+    BigInt<N> &BigInt<N>::operator-=(const BigInt &other)
+    {
+        *this = *this - other;
+        return *this;
+    }
+
+    template<std::size_t N>
+    BigInt<N> &BigInt<N>::operator*=(const BigInt &other)
+    {
+        *this = *this * other;
+        return *this;
+    }
+
+    template<std::size_t N>
+    BigInt<N> &BigInt<N>::operator++()
+    {
+        *this = *this + 1;
+        return *this;
+    }
+
+    template<std::size_t N>
+    BigInt<N> BigInt<N>::operator++(int)
+    {
+        BigInt old = *this;
+        ++*this;
+        return old;
+    }
+
+
+    template<std::size_t N>
+    BigInt<N> &BigInt<N>::operator--()
+    {
+        *this = *this - 1;
+        return *this;
+    }
+
+    template<std::size_t N>
+    BigInt<N> BigInt<N>::operator--(int)
+    {
+        BigInt old = *this;
+        --*this;
+        return old;
     }
 
     template<std::size_t N>
     std::string BigInt<N>::to_string(Base base) const
     {
-        return std::to_string(raw_[0]);
+        if (*this == BigInt{})
+        {
+            return "0";
+        }
+
+        if (base == Base::Hex)
+        {
+            std::string result;
+            result.reserve(limb_count * 16 + 2);
+            result += "0x";
+
+            bool started = false;
+            for (ssize_t i = limb_count - 1; i >= 0; --i)
+            {
+                if (!started)
+                {
+                    if (raw_[i] == 0) continue;
+                    char buf[17];
+                    std::snprintf(buf, sizeof(buf), "%lx", raw_[i]);
+                    result += buf;
+                    started = true;
+                } else
+                {
+                    char buf[17];
+                    std::snprintf(buf, sizeof(buf), "%016lx", raw_[i]);
+                    result += buf;
+                }
+            }
+
+            return result;
+        }
+
+        if (base == Base::Bin)
+        {
+            std::string result;
+            result.reserve(limb_count * 64 + 2);
+            result += "0b";
+
+            auto started = false;
+            for (ssize_t i = limb_count - 1; i >= 0; --i)
+            {
+                for (auto bit = 63; bit >= 0; --bit)
+                {
+                    const auto bit_set = raw_[i] >> bit & 1;
+                    if (!started && !bit_set) continue;
+                    result += bit_set ? '1' : '0';
+                    started = true;
+                }
+            }
+
+            return result;
+        }
+
+        // Slow fallback for dec (use slow div)
+        char buffer[N * 20]{};
+        auto pos = sizeof(buffer);
+
+        BigInt value = *this;
+        BigInt q{}, remainder{};
+        BigInt b = 10;
+
+        while (value > BigInt{})
+        {
+            bigint_div_basic(
+                value.raw_.data(),
+                b.raw_.data(),
+                q.raw_.data(),
+                remainder.raw_.data(),
+                limb_count
+            );
+
+            buffer[--pos] = '0' + static_cast<char>(remainder.raw_[0]);
+            value = q;
+        }
+
+        return std::string(buffer + pos, buffer + sizeof(buffer));
+    }
+
+    template<std::size_t N>
+    BigInt<N>::operator std::string() const
+    {
+        return this->to_string();
     }
 } // namespace t::big
 
