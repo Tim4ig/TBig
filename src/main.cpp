@@ -1,6 +1,4 @@
 #include <iostream>
-#include <bits/ostream.tcc>
-
 #include "bigint.hpp"
 
 int main()
