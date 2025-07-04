@@ -85,7 +85,7 @@ namespace t::big
         alignas(32) uint64_t result[R];
         alignas(32) uint64_t temp[4 * R];
 
-        if (true)
+        if (N > 512)
         {
             bigint_mul_karatsuba(result, raw_.data(), other.raw_.data(), limb_count, temp);
         } else

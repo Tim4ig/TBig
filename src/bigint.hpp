@@ -60,7 +60,7 @@ namespace t::big
         BigInt operator--(int); // postfix
 
         // Serialization
-        [[nodiscard]] std::string to_string(BigIntBase base = BigIntBase::Dec) const;
+        [[nodiscard]] std::string to_string(BigIntBase base = BigIntBase::Hex) const;
         [[nodiscard]] explicit operator std::string() const;
 
     private:
