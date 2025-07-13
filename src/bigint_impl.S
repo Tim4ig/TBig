@@ -5,7 +5,7 @@
 //
 //  uint64_t tbig_add(const uint64_t *a, const uint64_t *b, uint64_t *out, size_t limbs);
 //
-//  Performs addition of two multi-precision integers a and b with carry propagation
+//  Performs addition of two multi-precision integers
 //
 //  Precondition (caller must ensure):
 //      limbs > 0
@@ -54,13 +54,13 @@ tbig_add:
     mov     rax, 0                  //  rax = 0
     setc    al                      //  rax = carry
     ret                             //  return rax
-.size   bigint_add, .-bigint_add
+.size   tbig_add, .-tbig_add
 
 
 //
 //  uint64_t tbig_sub(const uint64_t *a, const uint64_t *b, uint64_t *out, size_t limbs);
 //
-//  Performs substraction of two multi-precision integers a and b with carry propagation
+//  Performs substraction of two multi-precision integers
 //
 //  Precondition (caller must ensure):
 //      limbs > 0
@@ -109,6 +109,84 @@ tbig_sub:
     mov     rax, 0                  // rax = 0
     setc    al                      // rax = borrow
     ret                             // return rax
-.size   bigint_sub, .-bigint_sub
+.size   tbig_sub, .-tbig_sub
 
 
+//
+//  void tbig_mul(const uint64_t *a, const uint64_t *b, uint64_t *out, size_t limbs);
+//
+//  Multi-precision schoolbook multiplicatio
+//  Produces a 2×limbs-wide result into out
+//
+//  Precondition (caller must ensure):
+//      limbs > 0
+//      limbs % 4 == 0
+//
+//  Arguments:
+//      rdi -> a                        in*
+//      rsi -> b                        in*
+//      rdx -> out                      out*
+//      rcx -> limbs                    in
+//
+.global tbig_mul
+.type   tbig_mul, @function
+.p2align 4, 0x90
+tbig_mul:
+    push    rbx
+    push    r12
+    push    r13
+    push    r14
+    push    r15
+
+    mov     r12, rdi                // r12 = a
+    mov     r13, rsi                // r13 = b
+    mov     r14, rdx                // r14 = out
+    mov     r15, rcx                // r15 = limbs
+
+    mov     rdi, rdx                // rdi = out
+    shl     rcx, 1                  // rcx = limbs * 2
+    xor     rax, rax                // rax = 0
+    rep stosq                       // memset(out, 0, limbs*2*8)
+
+    mov     rdi, r12
+    mov     rsi, r13
+    mov     rdx, r14
+    mov     r8, r15
+
+    xor     r9, r9
+
+.L_mul_loop_i:
+    cmp     r9, r8
+    jae     .L_mul_end
+
+    xor     r10, r10
+
+.L_mul_loop_j:
+    cmp     r10, r8
+    jae     .L_mul_next_i
+
+    mov     rax, [rdi + r9*8]
+    mul     qword ptr [rsi + r10*8]
+
+    mov     rcx, r9
+    add     rcx, r10
+    add     [rdx + rcx*8], rax
+
+    inc     rcx
+    adc     [rdx + rcx*8], rdx
+
+    inc     r10
+    jmp     .L_mul_loop_j
+
+.L_mul_next_i:
+    inc     r9
+    jmp     .L_mul_loop_i
+
+.L_mul_end:
+    pop     r15
+    pop     r14
+    pop     r13
+    pop     r12
+    pop     rbx
+    ret
+.size tbig_mul, .-tbig_mul

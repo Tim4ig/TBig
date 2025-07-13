@@ -88,6 +88,24 @@ int bigint_cmp(const t::big::impl::word_t *a, const t::big::impl::word_t *b, con
 
 int main()
 {
+    constexpr size_t limbs = 4096 / 64;
+    alignas(64) uint64_t a[limbs];
+    alignas(64) uint64_t b[limbs];
+    alignas(64) uint64_t c[limbs * 2];
+
+    from_string("10", limbs, a);
+    from_string("10", limbs, b);
+
+    t::big::impl::tbig_mul(a, b, c, limbs);
+
+    std::string res = to_string(c, limbs);
+
+    std::cout << res << '\n';
+
+    return 0;
+}
+
+/*
     for (int i = 0; i < 100; ++i)
     {
         constexpr size_t limbs = 4096 / 64;
@@ -117,6 +135,7 @@ int main()
             return 1;
         }
 
+
         t::big::impl::tbig_mul(a, b, c, limbs);
         from_string(test_mul[i].substr(0).c_str(), limbs * 2, d);
 
@@ -131,4 +150,4 @@ int main()
     }
 
     return 0;
-}
+ */
